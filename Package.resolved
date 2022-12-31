@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-case-paths.git",
       "state" : {
-        "revision" : "bb436421f57269fbcfe7360735985321585a86e5",
-        "version" : "0.10.1"
+        "revision" : "ac1cf1c35b63d70bf05707ad368c9459f31513ff",
+        "version" : "0.4.0"
       }
     }
   ],

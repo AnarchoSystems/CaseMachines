@@ -42,6 +42,7 @@ open class MachineController<Machine : CaseMachine> {
     }
     
     open func stateWillChange() {}
+    open func caseDidChange() {}
     
     public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Machine == Machine {
         actionQueue.append(arrow)
@@ -71,6 +72,7 @@ open class MachineController<Machine : CaseMachine> {
                 if let onEnter = state.onEnter {
                     self.interpreter?.onEffect(onEnter)
                 }
+                caseDidChange()
             }
             
             if let effect {
