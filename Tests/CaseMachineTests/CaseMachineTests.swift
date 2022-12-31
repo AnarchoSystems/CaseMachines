@@ -7,7 +7,7 @@ typealias Arrow = Morphism<TestState>
 final class CaseMachineTests: XCTestCase {
     
     
-    @available(macOS 13.0.0, *)
+    @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
     func testExample() throws {
         
         var test = TestState()
