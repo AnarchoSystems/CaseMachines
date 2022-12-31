@@ -45,7 +45,7 @@ public extension Move {
     func execute(_ state: inout Machine) -> Machine.Effect? {
         guard let this = From.extract(from: state) else {return nil}
         let (next, eff) : (To, Machine.Effect?) = doMove(from: this)
-        state = next.embed()
+        next.embed(into: &state)
         return eff
     }
     

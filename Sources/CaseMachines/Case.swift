@@ -11,18 +11,24 @@ import CasePaths
 public protocol Case : State where Whole: CaseMachine {
     
     associatedtype Whole
-    static var casePath : CasePath<Whole, Self> {get}
+    associatedtype Enum = Whole
+    static var keyPath : WritableKeyPath<Whole, Enum> {get}
+    static var casePath : CasePath<Enum, Self> {get}
     
+}
+
+public extension Case where Whole == Enum {
+    static var keyPath : WritableKeyPath<Whole, Enum> {\.self}
 }
 
 public extension Case {
     
     static func extract(from whole: Whole) -> Self? {
-        casePath.extract(from: whole)
+        casePath.extract(from: whole[keyPath: keyPath])
     }
     
-    func embed() -> Whole {
-        Self.casePath.embed(self)
+    func embed(into whole: inout Whole) {
+        whole[keyPath: Self.keyPath] = Self.casePath.embed(self)
     }
     
 }

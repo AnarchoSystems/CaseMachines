@@ -35,8 +35,8 @@ public extension CaseMachine {
     }
     
     @inlinable
-    func embed() -> Whole {
-        self
+    func embed(into whole: inout Whole) {
+        whole = self
     }
     
     @inlinable
