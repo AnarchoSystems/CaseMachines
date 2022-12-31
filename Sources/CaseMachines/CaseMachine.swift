@@ -11,8 +11,15 @@ public protocol CaseMachine : State where Whole == Self {
     associatedtype Whole = Self
     associatedtype Effect = Void
     associatedtype RawCases : Equatable = EquatableVoid
+    var rawCase : RawCases {get}
     var onEnter : Effect? {get}
     var onLeave : Effect? {get}
+}
+
+public extension CaseMachine where RawCases == EquatableVoid {
+    var rawCase : RawCases {
+        .init()
+    }
 }
 
 public extension CaseMachine {
