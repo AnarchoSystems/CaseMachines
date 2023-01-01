@@ -8,9 +8,11 @@
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
 public protocol EffectInterpreter<Machine> : AnyObject {
     
-    associatedtype Machine : CaseMachine
+    associatedtype Machine : StateChart
     
+    @MainActor
     var controller : MachineController<Machine>! {get set}
+    @MainActor
     func onEffect(_ effect: Machine.Effect)
     
 }
@@ -18,25 +20,56 @@ public protocol EffectInterpreter<Machine> : AnyObject {
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
 fileprivate extension EffectInterpreter {
     
+    @MainActor
     func onEffect(_ any: Any) {
         onEffect(any as! Machine.Effect)
     }
     
 }
 
+protocol StateChartMethod<Chart> {
+    
+    associatedtype Chart : StateChart
+    associatedtype Arrow : Morphism
+    var property : WritableKeyPath<Chart, Arrow.Machine.Whole> {get}
+    var arrow : Arrow {get}
+    
+}
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+extension StateChartMethod {
+    
+    @MainActor
+    func run(on state: inout Chart, interpreter: (any EffectInterpreter<Chart>)?) {
+        let effects = arrow.execute(&state[keyPath: property])
+        for effect in [effects.onLeave, effects.onEnter, effects.onTransition] {
+            if let effect {
+                interpreter?.onEffect(effect)
+            }
+        }
+    }
+    
+}
+
+struct ChartMethod<Arrow : Morphism> : StateChartMethod {
+    typealias Chart = Arrow.Machine.Whole
+    var property: WritableKeyPath<Arrow.Machine.Whole, Arrow.Machine.Whole> {\.self}
+    let arrow: Arrow
+}
+
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
 @MainActor
-open class MachineController<Machine : CaseMachine> {
+open class MachineController<Machine : StateChart> {
     
     private(set) public var state : Machine
     private let interpreter : (any EffectInterpreter<Machine>)?
-    private var actionQueue = [any Morphism<Machine>]()
+    private var actionQueue = [any StateChartMethod<Machine>]()
     
     public init(state: Machine, interpreter: (any EffectInterpreter<Machine>)? = nil) {
         self.state = state
         self.interpreter = interpreter
         self.interpreter?.controller = self
-        if let onEnter = self.state.onEnter {
+        if let onEnter = self.state.onInit {
             self.interpreter?.onEffect(onEnter)
         }
     }
@@ -44,8 +77,8 @@ open class MachineController<Machine : CaseMachine> {
     open func stateWillChange() {}
     open func caseDidChange() {}
     
-    public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Machine == Machine {
-        actionQueue.append(arrow)
+    public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Machine.Whole == Machine {
+        actionQueue.append(ChartMethod(arrow: arrow))
         if actionQueue.count == 1 {
             startDispatching()
         }
@@ -60,24 +93,7 @@ open class MachineController<Machine : CaseMachine> {
             
             let action = actionQueue[idx]
             
-            let rawCase = state.rawCase
-            let onLeave = state.onLeave
-            
-            let effect = state.run(action)
-            
-            if state.rawCase != rawCase {
-                if let onLeave {
-                    self.interpreter?.onEffect(onLeave)
-                }
-                if let onEnter = state.onEnter {
-                    self.interpreter?.onEffect(onEnter)
-                }
-                caseDidChange()
-            }
-            
-            if let effect {
-                self.interpreter?.onEffect(effect)
-            }
+            action.run(on: &state, interpreter: interpreter)
             
             idx += 1
             

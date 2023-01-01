@@ -23,7 +23,7 @@ final class CaseMachineTests: XCTestCase {
                                     TestState.RunEff(effect: IntState.embed(1337)),]
         
         for arrow in arrows {
-            if let eff = test.run(arrow) {
+            if let eff = arrow.execute(&test).onTransition {
                 switch eff {
                 case .assertInt(let val):
                     guard case .state1(let state) = test else {
@@ -42,6 +42,69 @@ final class CaseMachineTests: XCTestCase {
         }
         
     }
+    
+    @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+    @MainActor
+    func testProduceConsume() {
+        
+        class DummyInterpreter : EffectInterpreter {
+            var controller: CaseMachines.MachineController<ProducerConsumer>!
+            @MainActor
+            func onEffect(_ effect: ProducerConsumer.Effect) {
+                controller.send(effect)
+            }
+        }
+        
+        let controller = MachineController(state: ProducerConsumer(), interpreter: DummyInterpreter())
+        
+        controller.send(ProducerConsumer.IdleConsumer.Consume())
+        
+        guard
+            case .idle = controller.state.producer, // producer hasn't done anything yet
+            case .idle = controller.state.consumer, // nothing to consume yet
+            case .empty = controller.state.buffer else { // buffer still empty
+            return XCTFail()
+        }
+        
+        controller.send(ProducerConsumer.IdleProducer.Produce())
+        
+        guard
+            case .producing = controller.state.producer, // producer started production
+            case .idle = controller.state.consumer, // nothing to consume yet
+            case .empty = controller.state.buffer else { // buffer still empty
+            return XCTFail()
+        }
+        
+        
+        controller.send(ProducerConsumer.Producing.Finish())
+        
+        guard
+            case .idle = controller.state.producer, // producer is idle again
+            case .idle = controller.state.consumer, // nothing to consume yet
+            case .goodsAvailable = controller.state.buffer else { // producer has filled buffer
+            return XCTFail()
+        }
+        
+        controller.send(ProducerConsumer.IdleConsumer.Consume())
+        
+        guard
+            case .idle = controller.state.producer, // producer is idle again
+            case .consuming = controller.state.consumer, // finally we get to consume
+            case .empty = controller.state.buffer else { // buffer empty again
+            return XCTFail()
+        }
+        
+        controller.send(ProducerConsumer.Consuming.Finish())
+        
+        guard
+            case .idle = controller.state.producer, // producer is idle again
+            case .idle = controller.state.consumer, // done consuming
+            case .empty = controller.state.buffer else { // buffer empty again
+            return XCTFail()
+        }
+        
+        
+    }
 }
 
 enum Eff {
@@ -49,9 +112,10 @@ enum Eff {
     case assertString(String)
 }
 
-enum TestState : CaseMachine {
+enum TestState : CaseMachine, State {
     
     typealias Effect = Eff
+    typealias Whole = TestState
     
     case state1(IntState)
     case state2(StringState)
@@ -69,8 +133,7 @@ enum TestState : CaseMachine {
     }
     
     struct Assert2 : CaseMethod {
-        
-        func execute(_ state: inout TestState) -> Effect? {
+      func execute(_ state: inout TestState) -> Effect? {
             switch state {
             case .state1(let int):
                 return .assertInt(int.value)
@@ -83,6 +146,21 @@ enum TestState : CaseMachine {
     struct RunEff : Do {
         typealias Machine = TestState
         let effect: Eff
+    }
+    
+    @inlinable
+    static func extract(from whole: Whole) -> Self? {
+        whole
+    }
+    
+    @inlinable
+    func embed(into whole: inout Whole) {
+        whole = self
+    }
+    
+    @inlinable
+    static func tryModify(_ state: inout Whole, using closure: (inout Self) -> Whole.Effect?) -> Whole.Effect? {
+        closure(&state)
     }
     
 }
@@ -134,5 +212,138 @@ struct StringState : Case {
         var newValue : IntState {
             IntState(value: value)
         }
+    }
+}
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+struct ProducerConsumer : StateChart {
+    
+    typealias Effect = any Morphism<Buffer>
+    
+    var producer = Producer.idle(IdleProducer())
+    var buffer = Buffer.empty(EmptyBuffer())
+    var consumer = Consumer.idle(IdleConsumer())
+    
+    enum Producer : CaseMachine {
+        typealias Whole = ProducerConsumer
+        case idle(IdleProducer)
+        case producing(Producing)
+    }
+    
+    enum Buffer : CaseMachine {
+        typealias Whole = ProducerConsumer
+        case empty(EmptyBuffer)
+        case goodsAvailable(Goods)
+    }
+    
+    enum Consumer : CaseMachine {
+        typealias Whole = ProducerConsumer
+        case idle(IdleConsumer)
+        case consuming(Consuming)
+    }
+    
+}
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+extension ProducerConsumer {
+    
+    struct IdleProducer : Case {
+        
+        typealias Whole = Producer
+        static let casePath = /Producer.idle
+        
+        struct Produce : GoTo {
+            typealias From = IdleProducer
+            let keyPath = \ProducerConsumer.producer
+            let newValue = Producing()
+        }
+        
+    }
+    
+    struct Producing : Case {
+        
+        typealias Whole = Producer
+        static let casePath = /Producer.producing
+        
+        struct Finish : GoTo {
+            typealias From = Producing
+            let keyPath = \ProducerConsumer.producer
+            let newValue = IdleProducer()
+            let effect : Effect? = EmptyBuffer.Fill()
+            func shouldRun(on state: ProducerConsumer) -> Bool {
+                guard case .empty = state.buffer else {return false}
+                return true
+            }
+        }
+        
+    }
+    
+}
+
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+extension ProducerConsumer {
+    
+    struct EmptyBuffer : Case {
+        
+        typealias Whole = Buffer
+        static let casePath = /Buffer.empty
+        
+        struct Fill : GoTo {
+            typealias From = EmptyBuffer
+            let keyPath = \ProducerConsumer.buffer
+            let newValue = Goods()
+        }
+        
+    }
+    
+    struct Goods : Case {
+        
+        typealias Whole = Buffer
+        static let casePath = /Buffer.goodsAvailable
+        
+        struct Use : GoTo {
+            typealias From = Goods
+            let keyPath = \ProducerConsumer.buffer
+            let newValue = EmptyBuffer()
+        }
+        
+    }
+    
+}
+
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+extension ProducerConsumer {
+    
+    struct IdleConsumer : Case {
+        
+        typealias Whole = Consumer
+        static let casePath = /Consumer.idle
+        
+        struct Consume : GoTo {
+            typealias From = IdleConsumer
+            let keyPath = \ProducerConsumer.consumer
+            let newValue = Consuming()
+            let effect : Effect? = Goods.Use()
+            func shouldRun(on state: ProducerConsumer) -> Bool {
+                guard case .goodsAvailable = state.buffer else {return false}
+                return true
+            }
+        }
+        
+    }
+    
+    struct Consuming : Case {
+        
+        typealias Whole = Consumer
+        static let casePath = /Consumer.consuming
+        
+        struct Finish : GoTo {
+            typealias From = Consuming
+            let keyPath = \ProducerConsumer.consumer
+            let newValue = IdleConsumer()
+        }
+        
     }
 }

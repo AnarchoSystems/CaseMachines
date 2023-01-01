@@ -5,56 +5,68 @@
 //  Created by Markus Kasperczyk on 29.12.22.
 //
 
+public struct Effects<Eff> {
+    public let onLeave : Eff?
+    public let onEnter : Eff?
+    public let onTransition : Eff?
+    public init(onLeave: Eff? = nil, onEnter: Eff? = nil, onTransition: Eff? = nil) {
+        self.onLeave = onLeave
+        self.onEnter = onEnter
+        self.onTransition = onTransition
+    }
+}
+
+// TODO: find some convenient way to make this into Morphism<StateChart>
+
 public protocol Morphism<Machine> {
     
     associatedtype Machine : CaseMachine
-    func execute(_ state: inout Machine) -> Machine.Effect?
+    var keyPath : WritableKeyPath<Machine.Whole, Machine> {get}
+    func execute(_ state: inout Machine.Whole) -> Effects<Machine.Effect>
     
 }
 
-public extension CaseMachine {
-    
-    mutating func run<M : Morphism>(_ morphism: M) -> Effect? where M.Machine == Self {
-        morphism.execute(&self)
-    }
-    
+public extension Morphism where Machine.Whole == Machine {
+    var keyPath : WritableKeyPath<Machine.Whole, Machine> {\.self}
 }
 
 public protocol Do : Morphism {
+    func shouldRun(on state: Machine.Whole) -> Bool
     var effect : Machine.Effect {get}
 }
 
 public extension Do {
-    func execute(_ state: inout Machine) -> Machine.Effect? {
-        effect
+    
+    func shouldRun(on state: Machine.Whole) -> Bool {true}
+    
+    func execute(_ state: inout Machine.Whole) -> Effects<Machine.Effect> {
+        shouldRun(on: state) ? Effects(onTransition: effect) : Effects()
     }
+    
 }
 
-public protocol Move : Morphism where From.Whole == Machine, To.Whole == Machine {
+public protocol Move : Morphism where From.Whole == To.Whole, To.Whole == Machine {
     
     associatedtype Machine = From.Whole
     associatedtype From : State
     associatedtype To : State
     
+    func shouldRun(on state: Machine.Whole) -> Bool
     func doMove(from state: From) -> (To, Machine.Effect?)
     
 }
 
 public extension Move {
     
-    func execute(_ state: inout Machine) -> Machine.Effect? {
-        guard let this = From.extract(from: state) else {return nil}
+    func shouldRun(on state: Machine.Whole) -> Bool {true}
+    
+    func execute(_ state: inout Machine.Whole) -> Effects<Machine.Effect> {
+        guard shouldRun(on: state),
+              let this = From.extract(from: state[keyPath: keyPath]) else {return Effects()}
+        let onLeave = state[keyPath: keyPath].onLeave
         let (next, eff) : (To, Machine.Effect?) = doMove(from: this)
-        next.embed(into: &state)
-        return eff
-    }
-    
-}
-
-public extension State {
-    
-    func run<M : Move>(_ move: M) -> (M.To, Whole.Effect?) where M.From == Self {
-        move.doMove(from: self)
+        next.embed(into: &state[keyPath: keyPath])
+        return Effects(onLeave: onLeave, onEnter: state[keyPath: keyPath].onEnter, onTransition: eff)
     }
     
 }
@@ -73,14 +85,6 @@ public extension PureMove {
     
     func doMove(from state: From) -> (To, Machine.Effect?) {
         (doMove(from: state), nil)
-    }
-    
-}
-
-public extension State {
-    
-    func run<M : PureMove>(_ move: M) -> M.To where M.From == Self {
-        move.doMove(from: self)
     }
     
 }
@@ -112,26 +116,22 @@ public protocol CaseMethod : Morphism where Machine == Case.Whole {
     associatedtype Machine = Case.Whole
     associatedtype Case : State
     
+    func shouldRun(on state: Machine.Whole) -> Bool
     func execute(_ state: inout Case) -> Case.Effect?
     
 }
 
 public extension CaseMethod {
     
-    func execute(_ state: inout Machine) -> Machine.Effect? {
-        Case.tryModify(&state, using: execute)
+    func shouldRun(on state: Machine.Whole) -> Bool {true}
+    
+    func execute(_ state: inout Machine.Whole) -> Effects<Machine.Effect> {
+        guard shouldRun(on: state) else {return Effects()}
+        let eff = Case.tryModify(&state[keyPath: keyPath], using: execute)
+        return Effects(onTransition: eff)
     }
     
 }
-
-public extension State {
-    
-    mutating func run<M : CaseMethod>(_ method: M) -> Effect? where M.Case == Self {
-        method.execute(&self)
-    }
-    
-}
-
 
 public protocol PureMethod : CaseMethod where Case : State {
     
@@ -146,14 +146,6 @@ public extension PureMethod {
     
     func execute(_ state: inout Case) -> Case.Effect? {
         execute(&state); return nil
-    }
-    
-}
-
-public extension State {
-    
-    mutating func run<M : PureMethod>(_ method: M) where M.Case == Self {
-        method.execute(&self)
     }
     
 }
