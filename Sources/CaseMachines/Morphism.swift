@@ -5,11 +5,11 @@
 //  Created by Markus Kasperczyk on 29.12.22.
 //
 
-public struct Effects<Eff> {
-    public let onLeave : [Eff]
-    public let onEnter : [Eff]
-    public let onTransition : [Eff]
-    public init(onLeave: [Eff] = [], onEnter: [Eff] = [], onTransition: [Eff] = []) {
+public struct Effects<Chart : StateChart> {
+    public let onLeave : [Chart.Effect]
+    public let onEnter : [Chart.Effect]
+    public let onTransition : [Chart.Effect]
+    public init(onLeave: [Chart.Effect] = [], onEnter: [Chart.Effect] = [], onTransition: [Chart.Effect] = []) {
         self.onLeave = onLeave
         self.onEnter = onEnter
         self.onTransition = onTransition
@@ -19,7 +19,7 @@ public struct Effects<Eff> {
 public protocol Morphism<Whole> {
     
     associatedtype Whole : StateChart
-    func execute(_ state: inout Whole) -> Effects<Whole.Effect>
+    func execute(_ state: inout Whole) -> Effects<Whole>
     
 }
 
@@ -35,7 +35,7 @@ public extension Do {
     
     func shouldRun(on state: Whole) -> Bool {true}
     
-    func execute(_ state: inout Whole) -> Effects<Whole.Effect> {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
         shouldRun(on: state) ? Effects(onTransition: [effect]) : Effects()
     }
     
@@ -65,7 +65,7 @@ public extension Move {
         From.extract(from: state[keyPath: keyPath]) != nil
     }
     
-    func execute(_ state: inout Machine.Whole) -> Effects<Machine.Effect> {
+    func execute(_ state: inout Machine.Whole) -> Effects<Whole> {
         guard shouldRun(on: state),
               let this = From.extract(from: state[keyPath: keyPath]) else {return Effects()}
         let onLeave = state[keyPath: keyPath].onLeave
@@ -134,11 +134,11 @@ public extension CaseMethod where Machine == Whole {
 
 public extension CaseMethod {
     
-    func shouldRun(on state: Machine.Whole) -> Bool {
+    func shouldRun(on state: Whole) -> Bool {
         Case.extract(from: state[keyPath: keyPath]) != nil
     }
     
-    func execute(_ state: inout Machine.Whole) -> Effects<Machine.Effect> {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
         guard shouldRun(on: state) else {return Effects()}
         let eff = Case.tryModify(&state[keyPath: keyPath], using: execute)
         return Effects(onTransition: eff.map{[$0]} ?? [])
@@ -148,6 +148,7 @@ public extension CaseMethod {
 
 public protocol PureMethod : CaseMethod where Case : State {
     
+    associatedtype Whole = Case.Whole
     associatedtype Machine = Case.Whole
     associatedtype Case
     
@@ -164,7 +165,7 @@ public extension PureMethod {
 }
 
 class CustomTypeErasure<Whole : StateChart> : Morphism {
-    func execute(_ state: inout Whole) -> Effects<Whole.Effect> {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
         fatalError()
     }
 }
@@ -174,7 +175,7 @@ class Eraser<Arrow : Morphism> : CustomTypeErasure<Arrow.Whole> {
     init(arrow: Arrow) {
         self.arrow = arrow
     }
-    override func execute(_ state: inout Arrow.Whole) -> Effects<Arrow.Whole.Effect> {
+    override func execute(_ state: inout Arrow.Whole) -> Effects<Arrow.Whole> {
         arrow.execute(&state)
     }
 }
@@ -198,7 +199,7 @@ public extension MultiArrow {
         arrows.shouldRun(on: state)
     }
     
-    func execute(_ state: inout Whole) -> Effects<Whole.Effect> {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
         arrows.execute(&state)
     }
     
@@ -219,7 +220,7 @@ struct Arrows<Whole : StateChart> : MultiArrow {
     func shouldRun(on state: Whole) -> Bool {
         _arrows.allSatisfy{$0.shouldRun(on: state)}
     }
-    func execute(_ state: inout Whole) -> Effects<Whole.Effect> {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
         guard shouldRun(on: state) else {
             return Effects()
         }

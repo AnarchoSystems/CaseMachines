@@ -44,7 +44,7 @@ extension StateChartMethod {
         let effects = arrow.execute(&state[keyPath: property])
         guard let interpreter else {return}
         for effect in effects.onLeave + effects.onEnter + effects.onTransition {
-                interpreter.onEffect(effect)
+            interpreter.onEffect(effect)
         }
     }
     
@@ -74,7 +74,7 @@ open class MachineController<Machine : StateChart> {
     }
     
     open func stateWillChange() {}
-    open func caseDidChange() {}
+    open func stateDidChange() {}
     
     public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Whole == Machine {
         actionQueue.append(ChartMethod(arrow: arrow))
@@ -85,9 +85,10 @@ open class MachineController<Machine : StateChart> {
     
     private func startDispatching() {
         
+        var idx = 0
+        
         stateWillChange()
         
-        var idx = 0
         while actionQueue.indices.contains(idx) {
             
             let action = actionQueue[idx]
@@ -97,6 +98,8 @@ open class MachineController<Machine : StateChart> {
             idx += 1
             
         }
+        
+        stateDidChange()
         
         actionQueue = []
         
