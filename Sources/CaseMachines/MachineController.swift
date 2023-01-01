@@ -31,7 +31,7 @@ protocol StateChartMethod<Chart> {
     
     associatedtype Chart : StateChart
     associatedtype Arrow : Morphism
-    var property : WritableKeyPath<Chart, Arrow.Machine.Whole> {get}
+    var property : WritableKeyPath<Chart, Arrow.Whole> {get}
     var arrow : Arrow {get}
     
 }
@@ -42,18 +42,17 @@ extension StateChartMethod {
     @MainActor
     func run(on state: inout Chart, interpreter: (any EffectInterpreter<Chart>)?) {
         let effects = arrow.execute(&state[keyPath: property])
-        for effect in [effects.onLeave, effects.onEnter, effects.onTransition] {
-            if let effect {
-                interpreter?.onEffect(effect)
-            }
+        guard let interpreter else {return}
+        for effect in effects.onLeave + effects.onEnter + effects.onTransition {
+                interpreter.onEffect(effect)
         }
     }
     
 }
 
 struct ChartMethod<Arrow : Morphism> : StateChartMethod {
-    typealias Chart = Arrow.Machine.Whole
-    var property: WritableKeyPath<Arrow.Machine.Whole, Arrow.Machine.Whole> {\.self}
+    typealias Chart = Arrow.Whole
+    var property: WritableKeyPath<Arrow.Whole, Arrow.Whole> {\.self}
     let arrow: Arrow
 }
 
@@ -77,7 +76,7 @@ open class MachineController<Machine : StateChart> {
     open func stateWillChange() {}
     open func caseDidChange() {}
     
-    public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Machine.Whole == Machine {
+    public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Whole == Machine {
         actionQueue.append(ChartMethod(arrow: arrow))
         if actionQueue.count == 1 {
             startDispatching()

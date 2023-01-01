@@ -23,7 +23,7 @@ final class CaseMachineTests: XCTestCase {
                                     TestState.RunEff(effect: IntState.embed(1337)),]
         
         for arrow in arrows {
-            if let eff = arrow.execute(&test).onTransition {
+            for eff in arrow.execute(&test).onTransition {
                 switch eff {
                 case .assertInt(let val):
                     guard case .state1(let state) = test else {
@@ -133,6 +133,8 @@ enum TestState : CaseMachine, State {
     }
     
     struct Assert2 : CaseMethod {
+        typealias Whole = TestState
+        typealias Case = TestState
       func execute(_ state: inout TestState) -> Effect? {
             switch state {
             case .state1(let int):
@@ -144,7 +146,7 @@ enum TestState : CaseMachine, State {
     }
     
     struct RunEff : Do {
-        typealias Machine = TestState
+        typealias Whole = TestState
         let effect: Eff
     }
     
@@ -218,7 +220,7 @@ struct StringState : Case {
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
 struct ProducerConsumer : StateChart {
     
-    typealias Effect = any Morphism<Buffer>
+    typealias Effect = any Morphism<ProducerConsumer>
     
     var producer = Producer.idle(IdleProducer())
     var buffer = Buffer.empty(EmptyBuffer())
@@ -265,14 +267,20 @@ extension ProducerConsumer {
         typealias Whole = Producer
         static let casePath = /Producer.producing
         
-        struct Finish : GoTo {
-            typealias From = Producing
-            let keyPath = \ProducerConsumer.producer
-            let newValue = IdleProducer()
-            let effect : Effect? = EmptyBuffer.Fill()
-            func shouldRun(on state: ProducerConsumer) -> Bool {
-                guard case .empty = state.buffer else {return false}
-                return true
+        struct Finish : MultiArrow {
+            
+            typealias Whole = ProducerConsumer
+            
+            @ArrowBuilder
+            var arrows: some GuardedMorphism<ProducerConsumer> {
+                DoFinish()
+                EmptyBuffer.Fill()
+            }
+            
+            private struct DoFinish : GoTo {
+                let keyPath = \ProducerConsumer.producer
+                typealias From = Producing
+                let newValue = IdleProducer()
             }
         }
         
@@ -290,8 +298,8 @@ extension ProducerConsumer {
         static let casePath = /Buffer.empty
         
         struct Fill : GoTo {
-            typealias From = EmptyBuffer
             let keyPath = \ProducerConsumer.buffer
+            typealias From = EmptyBuffer
             let newValue = Goods()
         }
         
@@ -303,8 +311,8 @@ extension ProducerConsumer {
         static let casePath = /Buffer.goodsAvailable
         
         struct Use : GoTo {
-            typealias From = Goods
             let keyPath = \ProducerConsumer.buffer
+            typealias From = Goods
             let newValue = EmptyBuffer()
         }
         
@@ -321,14 +329,18 @@ extension ProducerConsumer {
         typealias Whole = Consumer
         static let casePath = /Consumer.idle
         
-        struct Consume : GoTo {
-            typealias From = IdleConsumer
-            let keyPath = \ProducerConsumer.consumer
-            let newValue = Consuming()
-            let effect : Effect? = Goods.Use()
-            func shouldRun(on state: ProducerConsumer) -> Bool {
-                guard case .goodsAvailable = state.buffer else {return false}
-                return true
+        struct Consume : MultiArrow {
+            typealias Whole = ProducerConsumer
+            @ArrowBuilder
+            var arrows : some GuardedMorphism<ProducerConsumer> {
+                DoConsume()
+                Goods.Use()
+            }
+            
+            private struct DoConsume : GoTo {
+                let keyPath = \ProducerConsumer.consumer
+                typealias From = IdleConsumer
+                let newValue = Consuming()
             }
         }
         
@@ -340,8 +352,8 @@ extension ProducerConsumer {
         static let casePath = /Consumer.consuming
         
         struct Finish : GoTo {
-            typealias From = Consuming
             let keyPath = \ProducerConsumer.consumer
+            typealias From = Consuming
             let newValue = IdleConsumer()
         }
         
