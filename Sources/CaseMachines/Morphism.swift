@@ -254,7 +254,7 @@ public struct IfAny<Whole : StateChart> : GuardedMorphism {
         var onLeave : [Whole.Effect] = []
         var onEnter : [Whole.Effect] = []
         var onTransition : [Whole.Effect] = []
-        for arrow in arrows {
+        for arrow in arrows where arrow.shouldRun(on: state) {
             let erased : CustomTypeErasure<Whole> = arrow.erased() // necessary for whatever reason...
             let effs = erased.execute(&state)
             onLeave.append(contentsOf: effs.onLeave)
