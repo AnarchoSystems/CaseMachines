@@ -187,13 +187,13 @@ extension Morphism {
 }
 
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
-public protocol MultiArrow : GuardedMorphism where Arrows.Whole == Whole {
+public protocol CoordinatedArrow : GuardedMorphism where Arrows.Whole == Whole {
     associatedtype Arrows : GuardedMorphism
     var arrows : Arrows {get}
 }
 
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
-public extension MultiArrow {
+public extension CoordinatedArrow {
     
     func shouldRun(on state: Whole) -> Bool {
         arrows.shouldRun(on: state)
@@ -208,26 +208,25 @@ public extension MultiArrow {
 @resultBuilder
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
 public enum ArrowBuilder {
-    public static func buildBlock<Whole : StateChart>(_ components: (any GuardedMorphism<Whole>)...) -> some GuardedMorphism<Whole> {
-        Arrows(_arrows: components)
+    public static func buildBlock<Whole : StateChart>(_ components: (any GuardedMorphism<Whole>)...) -> [any GuardedMorphism<Whole>] {
+        components
     }
 }
 
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
-struct Arrows<Whole : StateChart> : MultiArrow {
-    let _arrows: [any GuardedMorphism<Whole>]
-    var arrows : Self {self}
-    func shouldRun(on state: Whole) -> Bool {
-        _arrows.allSatisfy{$0.shouldRun(on: state)}
+public struct IfAll<Whole : StateChart> : GuardedMorphism {
+    public let arrows: [any GuardedMorphism<Whole>]
+    public func shouldRun(on state: Whole) -> Bool {
+        arrows.allSatisfy{$0.shouldRun(on: state)}
     }
-    func execute(_ state: inout Whole) -> Effects<Whole> {
+    public func execute(_ state: inout Whole) -> Effects<Whole> {
         guard shouldRun(on: state) else {
             return Effects()
         }
         var onLeave : [Whole.Effect] = []
         var onEnter : [Whole.Effect] = []
         var onTransition : [Whole.Effect] = []
-        for arrow in _arrows {
+        for arrow in arrows {
             let erased : CustomTypeErasure<Whole> = arrow.erased() // necessary for whatever reason...
             let effs = erased.execute(&state)
             onLeave.append(contentsOf: effs.onLeave)
@@ -236,4 +235,55 @@ struct Arrows<Whole : StateChart> : MultiArrow {
         }
         return Effects(onLeave: onLeave, onEnter: onEnter, onTransition: onTransition)
     }
+    public init(@ArrowBuilder arrows: () -> [any GuardedMorphism<Whole>]) {
+        self.arrows = arrows()
+    }
+}
+
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+public struct IfAny<Whole : StateChart> : GuardedMorphism {
+    public let arrows: [any GuardedMorphism<Whole>]
+    public func shouldRun(on state: Whole) -> Bool {
+        arrows.contains{$0.shouldRun(on: state)}
+    }
+    public func execute(_ state: inout Whole) -> Effects<Whole> {
+        guard shouldRun(on: state) else {
+            return Effects()
+        }
+        var onLeave : [Whole.Effect] = []
+        var onEnter : [Whole.Effect] = []
+        var onTransition : [Whole.Effect] = []
+        for arrow in arrows {
+            let erased : CustomTypeErasure<Whole> = arrow.erased() // necessary for whatever reason...
+            let effs = erased.execute(&state)
+            onLeave.append(contentsOf: effs.onLeave)
+            onEnter.append(contentsOf: effs.onEnter)
+            onTransition.append(contentsOf: effs.onTransition)
+        }
+        return Effects(onLeave: onLeave, onEnter: onEnter, onTransition: onTransition)
+    }
+    public init(@ArrowBuilder arrows: () -> [any GuardedMorphism<Whole>]) {
+        self.arrows = arrows()
+    }
+}
+
+@available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+public extension GuardedMorphism {
+    
+    /// The operator | (rather than ||) indicates that we take *all* applying arrow, not only the first one we find
+    static func |<Rhs : GuardedMorphism<Whole>>(lhs: Self, rhs: Rhs) -> IfAny<Whole> {
+        IfAny {
+            lhs
+            rhs
+        }
+    }
+    
+    static func &&<Rhs : GuardedMorphism<Whole>>(lhs: Self, rhs: Rhs) -> IfAll<Whole> {
+        IfAll {
+            lhs
+            rhs
+        }
+    }
+    
 }

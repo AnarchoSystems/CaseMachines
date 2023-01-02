@@ -47,15 +47,8 @@ final class CaseMachineTests: XCTestCase {
     @MainActor
     func testProduceConsume() {
         
-        class DummyInterpreter : EffectInterpreter {
-            var controller: CaseMachines.MachineController<ProducerConsumer>!
-            @MainActor
-            func onEffect(_ effect: ProducerConsumer.Effect) {
-                controller.send(effect)
-            }
-        }
         
-        let controller = MachineController(state: ProducerConsumer(), interpreter: DummyInterpreter())
+        let controller = MachineController(state: ProducerConsumer())
         
         controller.send(ProducerConsumer.IdleConsumer.Consume())
         
@@ -135,7 +128,7 @@ enum TestState : CaseMachine, State {
     struct Assert2 : CaseMethod {
         typealias Whole = TestState
         typealias Case = TestState
-      func execute(_ state: inout TestState) -> Effect? {
+        func execute(_ state: inout TestState) -> Effect? {
             switch state {
             case .state1(let int):
                 return .assertInt(int.value)
@@ -220,8 +213,6 @@ struct StringState : Case {
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
 struct ProducerConsumer : StateChart {
     
-    typealias Effect = any Morphism<ProducerConsumer>
-    
     var producer = Producer.idle(IdleProducer())
     var buffer = Buffer.empty(EmptyBuffer())
     var consumer = Consumer.idle(IdleConsumer())
@@ -267,14 +258,15 @@ extension ProducerConsumer {
         typealias Whole = Producer
         static let casePath = /Producer.producing
         
-        struct Finish : MultiArrow {
+        struct Finish : CoordinatedArrow {
             
             typealias Whole = ProducerConsumer
             
-            @ArrowBuilder
             var arrows: some GuardedMorphism<ProducerConsumer> {
-                DoFinish()
-                EmptyBuffer.Fill()
+                IfAll {
+                    DoFinish()
+                    EmptyBuffer.Fill()
+                }
             }
             
             private struct DoFinish : GoTo {
@@ -329,12 +321,10 @@ extension ProducerConsumer {
         typealias Whole = Consumer
         static let casePath = /Consumer.idle
         
-        struct Consume : MultiArrow {
+        struct Consume : CoordinatedArrow {
             typealias Whole = ProducerConsumer
-            @ArrowBuilder
             var arrows : some GuardedMorphism<ProducerConsumer> {
-                DoConsume()
-                Goods.Use()
+                DoConsume() && Goods.Use()
             }
             
             private struct DoConsume : GoTo {
