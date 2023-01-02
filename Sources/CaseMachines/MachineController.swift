@@ -6,11 +6,10 @@
 //
 
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
-public protocol EffectInterpreter<Machine> : AnyObject {
+public protocol EffectInterpreter<Machine> {
     
     associatedtype Machine : StateChart
     
-    @MainActor
     var controller : MachineController<Machine>! {get set}
     @MainActor
     func onEffect(_ effect: Machine.Effect)
@@ -57,11 +56,12 @@ struct ChartMethod<Arrow : Morphism> : StateChartMethod {
 }
 
 @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
-@MainActor
 open class MachineController<Machine : StateChart> {
     
+    @MainActor
     private(set) public var state : Machine
-    private let interpreter : (any EffectInterpreter<Machine>)?
+    private var interpreter : (any EffectInterpreter<Machine>)?
+    @MainActor
     private var actionQueue = [any StateChartMethod<Machine>]()
     
     public init(state: Machine, interpreter: (any EffectInterpreter<Machine>)? = nil) {
@@ -69,13 +69,18 @@ open class MachineController<Machine : StateChart> {
         self.interpreter = interpreter
         self.interpreter?.controller = self
         if let onEnter = self.state.onInit {
-            self.interpreter?.onEffect(onEnter)
+            Task {
+                await self.interpreter?.onEffect(onEnter)
+            }
         }
     }
     
+    @MainActor
     open func stateWillChange() {}
+    @MainActor
     open func stateDidChange() {}
     
+    @MainActor
     public func send<Arrow : Morphism>(_ arrow: Arrow) where Arrow.Whole == Machine {
         actionQueue.append(ChartMethod(arrow: arrow))
         if actionQueue.count == 1 {
@@ -83,6 +88,7 @@ open class MachineController<Machine : StateChart> {
         }
     }
     
+    @MainActor
     private func startDispatching() {
         
         var idx = 0
