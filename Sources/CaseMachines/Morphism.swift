@@ -45,6 +45,16 @@ public extension PropertyMorphism {
     }
 }
 
+public protocol PurePropertyMorphism : PropertyMorphism {
+    func execute(_ state: inout Property)
+}
+
+public extension PurePropertyMorphism {
+    func execute(_ state: inout Property) -> Effects<Whole> {
+        execute(&state); return Effects()
+    }
+}
+
 public extension PropertyMorphism where Self : GuardedMorphism {
     func execute(_ state: inout Whole) -> Effects<Whole> {
         shouldRun(on: state) ? execute(&state[keyPath: keyPath]) : Effects()
