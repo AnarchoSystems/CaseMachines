@@ -28,6 +28,29 @@ public protocol GuardedMorphism<Whole> : Morphism {
     func shouldRun(on state: Whole) -> Bool
 }
 
+public protocol PropertyMorphism : Morphism {
+    associatedtype Property
+    associatedtype Whole = Property
+    var keyPath : WritableKeyPath<Whole, Property> {get}
+    func execute(_ state: inout Property) -> Effects<Whole>
+}
+
+public extension PropertyMorphism where Property == Whole {
+    var keyPath : WritableKeyPath<Whole, Property> {\.self}
+}
+
+public extension PropertyMorphism {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
+        execute(&state[keyPath: keyPath])
+    }
+}
+
+public extension PropertyMorphism where Self : GuardedMorphism {
+    func execute(_ state: inout Whole) -> Effects<Whole> {
+        shouldRun(on: state) ? execute(&state[keyPath: keyPath]) : Effects()
+    }
+}
+
 public protocol Do : GuardedMorphism {
     var effect : Whole.Effect {get}
 }
@@ -42,38 +65,28 @@ public extension Do {
     
 }
 
-public protocol Move : GuardedMorphism where From.Machine == To.Machine, To.Machine == Machine, Whole == Machine.Whole {
+public protocol Move : GuardedMorphism, PropertyMorphism where Property : CaseMachine, Property.Effect == Whole.Effect, From.Machine == Property, To.Machine == Property {
     
-    associatedtype Whole = Machine.Whole
-    associatedtype Machine = From.Machine
     associatedtype From : State
     associatedtype To : State
     
-    var keyPath : WritableKeyPath<Whole, Machine> {get}
-    func doMove(from state: From) -> (To, Machine.Effect?)
+    func doMove(from state: From) -> (To, Whole.Effect?)
     
-}
-
-public extension Move where Machine == Whole {
-    var keyPath : WritableKeyPath<Whole, Machine> {
-        \.self
-    }
 }
 
 public extension Move {
     
-    func shouldRun(on state: Machine.Whole) -> Bool {
+    func shouldRun(on state: Whole) -> Bool {
         From.extract(from: state[keyPath: keyPath]) != nil
     }
     
     @discardableResult
-    func execute(_ state: inout Machine.Whole) -> Effects<Whole> {
-        guard shouldRun(on: state),
-              let this = From.extract(from: state[keyPath: keyPath]) else {return Effects()}
-        let onLeave = state[keyPath: keyPath].onLeave
-        let (next, eff) : (To, Machine.Effect?) = doMove(from: this)
-        next.embed(into: &state[keyPath: keyPath])
-        return Effects(onLeave: onLeave.map{[$0]} ?? [], onEnter: state[keyPath: keyPath].onEnter.map{[$0]} ?? [], onTransition: eff.map{[$0]} ?? [])
+    func execute(_ state: inout Property) -> Effects<Whole> {
+        guard let this = From.extract(from: state) else {return Effects()}
+        let onLeave = state.onLeave
+        let (next, eff) : (To, Whole.Effect?) = doMove(from: this)
+        next.embed(into: &state)
+        return Effects(onLeave: onLeave.map{[$0]} ?? [], onEnter: state.onEnter.map{[$0]} ?? [], onTransition: eff.map{[$0]} ?? [])
     }
     
 }
@@ -90,7 +103,7 @@ public protocol PureMove : Move {
 
 public extension PureMove {
     
-    func doMove(from state: From) -> (To, Machine.Effect?) {
+    func doMove(from state: From) -> (To, Whole.Effect?) {
         (doMove(from: state), nil)
     }
     
@@ -103,35 +116,27 @@ public protocol GoTo : Move {
     associatedtype To
     
     var newValue : To {get}
-    var effect : Machine.Effect? {get}
+    var effect : Whole.Effect? {get}
     
 }
 
 public extension GoTo {
     
     @inlinable
-    var effect : Machine.Effect? {nil}
+    var effect : Whole.Effect? {nil}
     
-    func doMove(from state: From) -> (To, Machine.Effect?) {
+    func doMove(from state: From) -> (To, Whole.Effect?) {
         (newValue, effect)
     }
     
 }
 
-public protocol CaseMethod : GuardedMorphism where Machine == Case.Machine, Whole == Machine.Whole {
+public protocol CaseMethod : PropertyMorphism, GuardedMorphism where Property : CaseMachine, Property.Effect == Whole.Effect, Property == Case.Machine {
     
-    associatedtype Machine = Case.Machine
     associatedtype Case : State
     
-    var keyPath : WritableKeyPath<Whole, Machine> {get}
     func execute(_ state: inout Case) -> Case.Effect?
     
-}
-
-public extension CaseMethod where Machine == Whole {
-    var keyPath : WritableKeyPath<Whole, Machine> {
-        \.self
-    }
 }
 
 public extension CaseMethod {
@@ -141,9 +146,8 @@ public extension CaseMethod {
     }
     
     @discardableResult
-    func execute(_ state: inout Whole) -> Effects<Whole> {
-        guard shouldRun(on: state) else {return Effects()}
-        let eff = Case.tryModify(&state[keyPath: keyPath], using: execute)
+    func execute(_ state: inout Property) -> Effects<Whole> {
+        let eff = Case.tryModify(&state, using: execute)
         return Effects(onTransition: eff.map{[$0]} ?? [])
     }
     
@@ -304,14 +308,21 @@ public struct Unconditional<Machine : CaseMachine> : State {
     }
 }
 
-public struct Identity<Case : State> : PureMethod {
-    public typealias Whole = Case.Machine.Whole
-    public let keyPath: WritableKeyPath<Case.Machine.Whole, Case.Machine>
-    public init(_ keyPath: WritableKeyPath<Case.Machine.Whole, Case.Machine>, expectedState: Case.Type = Case.self) {
+public struct Identity<A, B : State> : PureMethod {
+    
+    public typealias Case = B
+    
+    public let keyPath: WritableKeyPath<A, B.Machine>
+    
+    public init(_ keyPath: WritableKeyPath<A, B.Machine>, expectedState: Case.Type = Case.self) {
         self.keyPath = keyPath
     }
-    public init(expectedState: Case.Type = Case.self) where Case.Machine.Whole == Case.Machine {
+    public init(expectedState: Case.Type = Case.self) where A == Case.Machine {
         self = .init(\.self, expectedState: expectedState)
     }
-    public func execute(_ state: inout Case) {}
+    
+    public func execute(_ state: inout B) {}
+    
 }
+
+public typealias Id<Case : State> = Identity<Case.Machine, Case>

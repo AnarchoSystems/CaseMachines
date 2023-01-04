@@ -5,9 +5,7 @@
 //  Created by Markus Kasperczyk on 29.12.22.
 //
 
-public protocol CaseMachine : StateChart where Effect == Whole.Effect {
-    associatedtype Whole : StateChart = Self
-    associatedtype Effect = Whole.Effect
+public protocol CaseMachine : StateChart {
     var onEnter : Effect? {get}
     var onLeave : Effect? {get}
     init()

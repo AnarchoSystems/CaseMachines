@@ -30,6 +30,5 @@ extension Optional : StateChart where Wrapped : StateChart {
 
 extension Optional : CaseMachine, State where Wrapped : CaseMachine {
     public typealias Machine = Self
-    public typealias Whole = Wrapped.Whole
     public init() {self = .none}
 }

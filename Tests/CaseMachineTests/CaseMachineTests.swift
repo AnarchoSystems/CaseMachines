@@ -105,14 +105,14 @@ final class CaseMachineTests: XCTestCase {
         guard case .state1 = machine else {
             return XCTFail()
         }
-
+        
         ConditionsTest.GoToState(newValue: ConditionsTest.State2()).execute(&machine)
         
         guard case .state2 = machine else {
             return XCTFail()
         }
         
-        (ConditionsTest.GoToState(newValue: ConditionsTest.State3()) && Identity<ConditionsTest.State1>()).execute(&machine)
+        (ConditionsTest.GoToState(newValue: ConditionsTest.State3()) && Id<ConditionsTest.State1>()).execute(&machine)
         
         guard case .state2 = machine else {
             return XCTFail()
@@ -136,6 +136,7 @@ enum TestState : CaseMachine, State {
     init() {self = .state1(IntState())}
     
     struct Assert1 : Move {
+        typealias Whole = TestState
         func doMove(from state: TestState) -> (TestState, Effect?) {
             switch state {
             case .state1(let int):
@@ -180,6 +181,8 @@ struct IntState : Case {
     
     struct Stringify : PureMove {
         
+        typealias Whole = TestState
+        
         func doMove(from state: IntState) -> StringState {
             StringState(value: "answer: \(state.value)")
         }
@@ -187,6 +190,8 @@ struct IntState : Case {
     }
     
     struct Add : PureMethod {
+        typealias Whole = TestState
+        typealias Case = IntState
         let addedValue : Int
         func execute(_ state: inout IntState) {
             state.value += addedValue
@@ -208,6 +213,7 @@ struct StringState : Case {
     }
     
     struct SetValue : GoTo {
+        typealias Whole = TestState
         typealias From = StringState
         let value : Int
         var newValue : IntState {
@@ -260,7 +266,9 @@ extension ProducerConsumer {
         typealias Machine = Producer
         static let casePath = /Producer.idle
         
-        struct Produce : GoTo {
+        struct Produce: GoTo {
+            typealias Whole = ProducerConsumer
+            typealias Property = Producer
             typealias From = IdleProducer
             let keyPath = \ProducerConsumer.producer
             let newValue = Producing()
@@ -385,3 +393,4 @@ enum ConditionsTest : CaseMachine {
         let newValue : C
     }
 }
+
