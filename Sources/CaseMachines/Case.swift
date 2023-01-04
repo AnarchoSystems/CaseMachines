@@ -8,20 +8,20 @@
 import CasePaths
 
 
-public protocol Case : State where Whole: CaseMachine {
+public protocol Case : State where Machine: CaseMachine {
     
-    associatedtype Whole
-    static var casePath : CasePath<Whole, Self> {get}
+    associatedtype Machine
+    static var casePath : CasePath<Machine, Self> {get}
     
 }
 
 public extension Case {
     
-    static func extract(from whole: Whole) -> Self? {
+    static func extract(from whole: Machine) -> Self? {
         casePath.extract(from: whole)
     }
     
-    func embed(into whole: inout Whole) {
+    func embed(into whole: inout Machine) {
         whole = Self.casePath.embed(self)
     }
     

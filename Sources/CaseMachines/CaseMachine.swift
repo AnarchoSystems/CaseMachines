@@ -10,6 +10,7 @@ public protocol CaseMachine : StateChart where Effect == Whole.Effect {
     associatedtype Effect = Whole.Effect
     var onEnter : Effect? {get}
     var onLeave : Effect? {get}
+    init()
 }
 
 public extension CaseMachine {

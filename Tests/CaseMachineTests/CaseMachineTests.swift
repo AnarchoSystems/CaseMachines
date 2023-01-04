@@ -107,8 +107,8 @@ enum Eff {
 
 enum TestState : CaseMachine, State {
     
+    typealias Machine = Self
     typealias Effect = Eff
-    typealias Whole = TestState
     
     case state1(IntState)
     case state2(StringState)
@@ -143,26 +143,11 @@ enum TestState : CaseMachine, State {
         let effect: Eff
     }
     
-    @inlinable
-    static func extract(from whole: Whole) -> Self? {
-        whole
-    }
-    
-    @inlinable
-    func embed(into whole: inout Whole) {
-        whole = self
-    }
-    
-    @inlinable
-    static func tryModify(_ state: inout Whole, using closure: (inout Self) -> Whole.Effect?) -> Whole.Effect? {
-        closure(&state)
-    }
-    
 }
 
 struct IntState : Case {
     
-    typealias Whole = TestState
+    typealias Machine = TestState
     
     static let casePath = /TestState.state1
     
@@ -191,7 +176,7 @@ struct IntState : Case {
 
 struct StringState : Case {
     
-    typealias Whole = TestState
+    typealias Machine = TestState
     
     static let casePath = /TestState.state2
     
@@ -221,18 +206,27 @@ struct ProducerConsumer : StateChart {
         typealias Whole = ProducerConsumer
         case idle(IdleProducer)
         case producing(Producing)
+        init() {
+            self = .idle(IdleProducer())
+        }
     }
     
     enum Buffer : CaseMachine {
         typealias Whole = ProducerConsumer
         case empty(EmptyBuffer)
         case goodsAvailable(Goods)
+        init() {
+            self = .empty(EmptyBuffer())
+        }
     }
     
     enum Consumer : CaseMachine {
         typealias Whole = ProducerConsumer
         case idle(IdleConsumer)
         case consuming(Consuming)
+        init() {
+            self = .idle(IdleConsumer())
+        }
     }
     
 }
@@ -242,7 +236,7 @@ extension ProducerConsumer {
     
     struct IdleProducer : Case {
         
-        typealias Whole = Producer
+        typealias Machine = Producer
         static let casePath = /Producer.idle
         
         struct Produce : GoTo {
@@ -255,7 +249,7 @@ extension ProducerConsumer {
     
     struct Producing : Case {
         
-        typealias Whole = Producer
+        typealias Machine = Producer
         static let casePath = /Producer.producing
         
         struct Finish : CoordinatedArrow {
@@ -286,7 +280,7 @@ extension ProducerConsumer {
     
     struct EmptyBuffer : Case {
         
-        typealias Whole = Buffer
+        typealias Machine = Buffer
         static let casePath = /Buffer.empty
         
         struct Fill : GoTo {
@@ -299,7 +293,7 @@ extension ProducerConsumer {
     
     struct Goods : Case {
         
-        typealias Whole = Buffer
+        typealias Machine = Buffer
         static let casePath = /Buffer.goodsAvailable
         
         struct Use : GoTo {
@@ -318,7 +312,7 @@ extension ProducerConsumer {
     
     struct IdleConsumer : Case {
         
-        typealias Whole = Consumer
+        typealias Machine = Consumer
         static let casePath = /Consumer.idle
         
         struct Consume : CoordinatedArrow {
@@ -338,7 +332,7 @@ extension ProducerConsumer {
     
     struct Consuming : Case {
         
-        typealias Whole = Consumer
+        typealias Machine = Consumer
         static let casePath = /Consumer.consuming
         
         struct Finish : GoTo {

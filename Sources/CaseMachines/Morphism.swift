@@ -41,10 +41,10 @@ public extension Do {
     
 }
 
-public protocol Move : GuardedMorphism where From.Whole == To.Whole, To.Whole == Machine, Whole == Machine.Whole {
+public protocol Move : GuardedMorphism where From.Machine == To.Machine, To.Machine == Machine, Whole == Machine.Whole {
     
     associatedtype Whole = Machine.Whole
-    associatedtype Machine = From.Whole
+    associatedtype Machine = From.Machine
     associatedtype From : State
     associatedtype To : State
     
@@ -78,7 +78,7 @@ public extension Move {
 
 public protocol PureMove : Move {
     
-    associatedtype Machine = From.Whole
+    associatedtype Machine = From.Machine
     associatedtype From
     associatedtype To
     
@@ -96,7 +96,7 @@ public extension PureMove {
 
 public protocol GoTo : Move {
     
-    associatedtype Machine = From.Whole
+    associatedtype Machine = From.Machine
     associatedtype From
     associatedtype To
     
@@ -116,9 +116,9 @@ public extension GoTo {
     
 }
 
-public protocol CaseMethod : GuardedMorphism where Machine == Case.Whole, Whole == Machine.Whole {
+public protocol CaseMethod : GuardedMorphism where Machine == Case.Machine, Whole == Machine.Whole {
     
-    associatedtype Machine = Case.Whole
+    associatedtype Machine = Case.Machine
     associatedtype Case : State
     
     var keyPath : WritableKeyPath<Whole, Machine> {get}
@@ -148,8 +148,8 @@ public extension CaseMethod {
 
 public protocol PureMethod : CaseMethod where Case : State {
     
-    associatedtype Whole = Case.Whole
-    associatedtype Machine = Case.Whole
+    associatedtype Whole = Case.Machine
+    associatedtype Machine = Case.Machine
     associatedtype Case
     
     func execute(_ state: inout Case)
