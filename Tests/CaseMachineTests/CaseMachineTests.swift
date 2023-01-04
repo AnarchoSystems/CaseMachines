@@ -95,9 +95,30 @@ final class CaseMachineTests: XCTestCase {
             case .empty = controller.state.buffer else { // buffer empty again
             return XCTFail()
         }
-        
-        
     }
+    
+    @available(iOS 16.0.0, macOS 13.0.0, tvOS 16.0.0, watchOS 9.0.0, *)
+    func testConditions() {
+        
+        var machine = ConditionsTest()
+        
+        guard case .state1 = machine else {
+            return XCTFail()
+        }
+
+        ConditionsTest.GoToState(newValue: ConditionsTest.State2()).execute(&machine)
+        
+        guard case .state2 = machine else {
+            return XCTFail()
+        }
+        
+        (ConditionsTest.GoToState(newValue: ConditionsTest.State3()) && Identity<ConditionsTest.State1>()).execute(&machine)
+        
+        guard case .state2 = machine else {
+            return XCTFail()
+        }
+    }
+    
 }
 
 enum Eff {
@@ -341,5 +362,26 @@ extension ProducerConsumer {
             let newValue = IdleConsumer()
         }
         
+    }
+}
+
+enum ConditionsTest : CaseMachine {
+    case state1(State1)
+    case state2(State2)
+    case state3(State3)
+    init() {self = .state1(State1())}
+    struct State1 : Case {
+        static let casePath = /ConditionsTest.state1
+    }
+    struct State2 : Case {
+        static let casePath = /ConditionsTest.state2
+    }
+    struct State3 : Case {
+        static let casePath = /ConditionsTest.state3
+    }
+    struct GoToState<C : Case> : GoTo where C.Machine == ConditionsTest {
+        typealias Whole = ConditionsTest
+        typealias From = Unconditional<Whole>
+        let newValue : C
     }
 }

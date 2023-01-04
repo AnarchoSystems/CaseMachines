@@ -19,6 +19,7 @@ public struct Effects<Chart : StateChart> {
 public protocol Morphism<Whole> {
     
     associatedtype Whole : StateChart
+    @discardableResult
     func execute(_ state: inout Whole) -> Effects<Whole>
     
 }
@@ -65,6 +66,7 @@ public extension Move {
         From.extract(from: state[keyPath: keyPath]) != nil
     }
     
+    @discardableResult
     func execute(_ state: inout Machine.Whole) -> Effects<Whole> {
         guard shouldRun(on: state),
               let this = From.extract(from: state[keyPath: keyPath]) else {return Effects()}
@@ -138,6 +140,7 @@ public extension CaseMethod {
         Case.extract(from: state[keyPath: keyPath]) != nil
     }
     
+    @discardableResult
     func execute(_ state: inout Whole) -> Effects<Whole> {
         guard shouldRun(on: state) else {return Effects()}
         let eff = Case.tryModify(&state[keyPath: keyPath], using: execute)
@@ -219,6 +222,8 @@ public struct IfAll<Whole : StateChart> : GuardedMorphism {
     public func shouldRun(on state: Whole) -> Bool {
         arrows.allSatisfy{$0.shouldRun(on: state)}
     }
+    
+    @discardableResult
     public func execute(_ state: inout Whole) -> Effects<Whole> {
         guard shouldRun(on: state) else {
             return Effects()
@@ -247,6 +252,8 @@ public struct IfAny<Whole : StateChart> : GuardedMorphism {
     public func shouldRun(on state: Whole) -> Bool {
         arrows.contains{$0.shouldRun(on: state)}
     }
+    
+    @discardableResult
     public func execute(_ state: inout Whole) -> Effects<Whole> {
         guard shouldRun(on: state) else {
             return Effects()
@@ -286,4 +293,25 @@ public extension GuardedMorphism {
         }
     }
     
+}
+
+public struct Unconditional<Machine : CaseMachine> : State {
+    public static func extract(from whole: Machine) -> Unconditional<Machine>? {
+        Unconditional()
+    }
+    public func embed(into whole: inout Machine) {
+        fatalError()
+    }
+}
+
+public struct Identity<Case : State> : PureMethod {
+    public typealias Whole = Case.Machine.Whole
+    public let keyPath: WritableKeyPath<Case.Machine.Whole, Case.Machine>
+    public init(_ keyPath: WritableKeyPath<Case.Machine.Whole, Case.Machine>, expectedState: Case.Type = Case.self) {
+        self.keyPath = keyPath
+    }
+    public init(expectedState: Case.Type = Case.self) where Case.Machine.Whole == Case.Machine {
+        self = .init(\.self, expectedState: expectedState)
+    }
+    public func execute(_ state: inout Case) {}
 }
